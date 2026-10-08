@@ -156,7 +156,7 @@ _REJECTED_MODEL_SENTINEL = ".rejected-custom-model.invalid"
 
 # Qwen3-Embedding requires last-token pooling (LLAMA_POOLING_TYPE_LAST), and it
 # stays the pooling of every model whose id names no other (see
-# model_pooling_type): the bundled model, and a custom model recorded before its
+# embedding_profile): the bundled model, and a custom model recorded before its
 # file's declared pooling was honoured. The value is always passed explicitly.
 _POOLING_TYPE_LAST = 3
 # llama.cpp's `enum llama_pooling_type` values for the poolings a model can ask for.
@@ -174,7 +174,7 @@ _POOLING_TYPES = {"mean": 1, "cls": 2, "last": _POOLING_TYPE_LAST}
 # satisfies the check), while an ADDED cache-less architecture is invisible to it
 # and must be re-mirrored by hand (see the bump procedure in _vendor/README.md).
 # Membership decides only the micro-batch shape (see _model_context_policy);
-# pooling comes from the model's id (see model_pooling_type).
+# pooling comes from the model's id (see embedding_profile).
 # Non-causal models that DO keep a KV cache (llama-embed, or any decoder family
 # re-tagged bidirectional) are not named here: they declare
 # `<architecture>.attention.causal = false` and _model_context_policy() reads
@@ -1044,13 +1044,22 @@ def _model_context_policy(path: Path) -> _ContextPolicy:
     return _ContextPolicy(window, window, min(_N_UBATCH, window))
 
 
-# ── Per-model pooling ──
+# ── Per-model profiles ──
 
 # A custom model's pooling is part of its identity label (`custom@mean`), so the
 # pooling is part of what names its vector space. Last-token keeps the plain
 # `custom` label every custom model carried before the file's pooling was read.
 _CUSTOM_LABEL = "custom"
 _POOLING_LABEL_SEPARATOR = "@"
+
+
+class EmbeddingProfile(NamedTuple):
+    """How one model turns text into a vector: pooling, prompts and BOS handling."""
+
+    pooling_type: int = _POOLING_TYPE_LAST
+    add_bos: bool = True
+    query_prefix: str = ""
+    document_prefix: str = ""
 
 
 def gguf_declared_pooling(path: Path) -> str:
@@ -1096,6 +1105,37 @@ def model_pooling_type(model_id: str) -> int:
     if separator and base == _CUSTOM_LABEL and pooling in _POOLING_TYPES:
         return _POOLING_TYPES[pooling]
     return _POOLING_TYPE_LAST
+
+
+def embedding_profile(model_id: str) -> EmbeddingProfile:
+    """The profile the model named by *model_id* runs with.
+
+    A catalog entry is recognised by its exact id, ``<entry id>:sha256:<pinned
+    digest>``, so its pooling, prompts and BOS handling apply only to its pinned
+    file. Every other model runs with the pooling its id names
+    (:func:`model_pooling_type`), no prompts and the vocabulary's BOS, so the
+    vectors stored under an existing id never change.
+    """
+    # Lazy: the catalog builds its entries from EmbeddingProfile above.
+    from kiro_crew.embedding_catalog import embedding_model_catalog
+
+    for entry in embedding_model_catalog():
+        if entry.model_id == model_id:
+            return entry.profile
+    return EmbeddingProfile(model_pooling_type(model_id))
+
+
+def prompted_text(backend: object, text: str, *, query: bool = False) -> str:
+    """*text* under the prompt the backend's model expects for a query or a document.
+
+    Retrieval models trained with prompts embed a search query and a stored
+    document under different prefixes. A backend without a profile embeds text
+    as given.
+    """
+    profile = getattr(backend, "profile", None)
+    if not isinstance(profile, EmbeddingProfile):
+        return text
+    return (profile.query_prefix if query else profile.document_prefix) + text
 
 
 # ── Model paths ──
@@ -1466,9 +1506,10 @@ def _verify_custom_model(path: Path, configured: str, recorded_stamp: object, co
                 if (
                     not memory.get("embed_model_stamp")
                     and ":sha256:" not in configured
-                    # Legacy vectors were made with last-token pooling; a model
-                    # running another rebuilds them, so it inherits nothing.
-                    and model_pooling_type(model_id) == _POOLING_TYPE_LAST
+                    # Legacy vectors were made with last-token pooling and no
+                    # prompts; a model running another profile rebuilds them, so
+                    # it inherits nothing.
+                    and embedding_profile(model_id) == EmbeddingProfile()
                 ):
                     labels = {f"custom:{path.name}:{stamp[2]}"}
                     if configured:
@@ -1710,7 +1751,7 @@ def bundled_embedding_dim() -> int:
     return _DEFAULT_DIM
 
 
-def build_gated_candidate(path: Path) -> LlamaCppEmbedder:
+def build_gated_candidate(path: Path, label: str = "") -> LlamaCppEmbedder:
     """A GATED candidate for ``path`` that adopts the model's own width.
 
     Two properties make a live model change safe, and both are why this is not
@@ -1729,9 +1770,10 @@ def build_gated_candidate(path: Path) -> LlamaCppEmbedder:
     ``model_id`` is derived here, not by the caller, so the vector-space
     signature matches what :func:`resolve_custom_model` would compute for the
     same file — otherwise a real model change could look like no change.
+    *label* is a catalog id; empty, the file's declared pooling picks the label.
     """
     return LlamaCppEmbedder(
-        model_path=path, dim=0, model_id=_custom_model_id(path, ""), serving=False
+        model_path=path, dim=0, model_id=_custom_model_id(path, label), serving=False
     )
 
 
@@ -2148,9 +2190,9 @@ def _align_store_embedding_space(store: "_AlignableStore") -> int:
             and isinstance(backend, LlamaCppEmbedder)
             and backend.model_path == Path(str(memory.get("embed_model_path", ""))).expanduser()
             and backend.model_id == memory.get("embed_model_id")
-            # The legacy vectors were made with last-token pooling, so they are
-            # this space only while the model still runs with it.
-            and model_pooling_type(backend.model_id) == _POOLING_TYPE_LAST
+            # The legacy vectors were made with last-token pooling and no
+            # prompts, so they are this space only while the model still runs that way.
+            and embedding_profile(backend.model_id) == EmbeddingProfile()
             and store._embedding_dim == dim
             and store.recorded_embedding_space()
             in {embedding_space_signature(label, dim) for label in legacy_ids}
@@ -2288,8 +2330,8 @@ class LlamaCppEmbedder(EmbeddingBackend):
         self._dim = dim
         self._model_id = model_id
         # A pure function of the id, which is what names the vector space, so
-        # the pooling can never change under vectors already stored for this id.
-        self._pooling_type = model_pooling_type(model_id)
+        # a profile can never change under vectors already stored for this id.
+        self._profile = embedding_profile(model_id)
         # Only the bundled factory paths set this. A custom model may declare
         # the same id and width without containing the same weights.
         self._uses_bundled_identity = False
@@ -2365,6 +2407,10 @@ class LlamaCppEmbedder(EmbeddingBackend):
     @property
     def dim(self) -> int:
         return self._dim
+
+    @property
+    def profile(self) -> EmbeddingProfile:
+        return self._profile
 
     def is_ready(self) -> bool:
         """True when the model is loaded in memory.
@@ -2496,9 +2542,9 @@ class LlamaCppEmbedder(EmbeddingBackend):
             llm = llama_cls(
                 model_path=str(self._model_path),
                 embedding=True,
-                # From the model's id, passed for every file: a model whose id
-                # was recorded under last-token keeps it whatever the file says.
-                pooling_type=self._pooling_type,
+                # From the model's profile, passed for every file: a model whose
+                # id was recorded under last-token keeps it whatever the file says.
+                pooling_type=self._profile.pooling_type,
                 # n_batch == n_ctx so the logical batch always covers the whole
                 # input in one go, which last-token pooling needs. In embedding mode
                 # the vendored constructor skips the ~1.24 GB per-token logits
@@ -2523,6 +2569,11 @@ class LlamaCppEmbedder(EmbeddingBackend):
                 verbose=False,
             )
             _install_metadata_kv_clear(llm)
+            if not self._profile.add_bos:
+                # The vendored embed() tokenizes with the vocabulary's BOS. A
+                # model trained without one (Nemotron) would see a token it never
+                # saw at position 0, so its inputs are tokenized without it.
+                llm.tokenize = functools.partial(llm.tokenize, add_bos=False)
             try:
                 unchanged = _model_file_stamp(self._model_path) == stamp
             except OSError:
@@ -3648,11 +3699,17 @@ _sync_embed_flights: dict[tuple[int, str], _EmbedFlight] = {}
 
 
 def _shared_sync_embed(
-    text: str, *, priority: int = PRIORITY_NORMAL, backend: EmbeddingBackend | None = None
+    text: str,
+    *,
+    priority: int = PRIORITY_NORMAL,
+    backend: EmbeddingBackend | None = None,
+    query: bool = False,
 ) -> list[float] | None:
     global _sync_embed_cache_backend
-    text = text[:_MAX_EMBED_CHARS]
     backend = backend if backend is not None else get_shared_embedder()
+    # Prompted before the cache key is formed, so a query and a document of the
+    # same text stay distinct entries whenever the model prompts them apart.
+    text = prompted_text(backend, text, query=query)[:_MAX_EMBED_CHARS]
     key = (backend.model_id, text)
     flight_key = (id(backend), text)
     work = _work_for_priority(priority)

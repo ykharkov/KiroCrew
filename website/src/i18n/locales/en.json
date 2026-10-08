@@ -8128,7 +8128,21 @@
         "subtitle": "Runs locally. Changing it re-embeds stored memories in the background.",
         "title": "Embedding Model",
         "will_revert": "Empty — this will revert to the bundled model.",
-        "err_env_override_with_ref": "<settingRef/> is set and overrides this setting. Unset it to change the model here."
+        "err_env_override_with_ref": "<settingRef/> is set and overrides this setting. Unset it to change the model here.",
+        "badge_catalog": "recommended",
+        "tab_catalog": "From Hugging Face",
+        "tab_local": "Local file",
+        "source_label": "Model source",
+        "catalog_hint": "Downloaded from Hugging Face into the data home and verified against a pinned SHA-256.",
+        "model_select_label": "Model",
+        "catalog_meta": "{{mb}} MB · {{dim}}d",
+        "download": "Download",
+        "downloading": "Downloading… {{pct}}%",
+        "download_verifying": "Verifying the download…",
+        "download_failed": "Download failed. Check your network connection and try again.",
+        "in_use": "In use",
+        "err_download_in_progress": "Another model is downloading. Wait for it to finish.",
+        "err_not_downloaded": "Download the model before applying it."
       },
       "kiroCrewCfgTab": {
         "applies_to_sessions_started_after_the_change": "Applies to sessions started after the change. 'auto' sandboxes the agent but keeps credential tooling working; 'strict' also hides cloud, SSH, kube and registry credentials, so those tools stop working inside the agent — only where {{productName}}'s own sandbox confines the spawn, not on Windows or on a macOS spawn delegated to kiro-cli's internal sandbox; 'off' skips {{productName}}'s sandbox (on macOS kiro-cli's own sandbox still applies when enabled).",

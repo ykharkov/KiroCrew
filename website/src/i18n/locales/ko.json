@@ -14109,7 +14109,21 @@
         "will_revert": "비어 있음 — 번들된 모델로 되돌아갑니다.",
         "err_env_override_with_ref": "<settingRef/>이(가) 설정되어 있어 이 설정을 재정의합니다. 여기에서 모델을 변경하려면 해제하세요.",
         "apply_reapply": "메모리 벡터 재구축",
-        "confirm_reapply_body": "구성된 모델을 다시 로드하고 저장된 메모리 벡터를 지운 후 재구축합니다."
+        "confirm_reapply_body": "구성된 모델을 다시 로드하고 저장된 메모리 벡터를 지운 후 재구축합니다.",
+        "badge_catalog": "추천",
+        "tab_catalog": "Hugging Face에서",
+        "tab_local": "로컬 파일",
+        "source_label": "모델 출처",
+        "catalog_hint": "Hugging Face에서 데이터 홈으로 다운로드하고 고정된 SHA-256으로 검증합니다.",
+        "model_select_label": "모델",
+        "catalog_meta": "{{mb}} MB · {{dim}}d",
+        "download": "다운로드",
+        "downloading": "다운로드 중… {{pct}}%",
+        "download_verifying": "다운로드 검증 중…",
+        "download_failed": "다운로드에 실패했습니다. 네트워크 연결을 확인하고 다시 시도하세요.",
+        "in_use": "사용 중",
+        "err_download_in_progress": "다른 모델을 다운로드하고 있습니다. 끝날 때까지 기다려 주세요.",
+        "err_not_downloaded": "적용하기 전에 모델을 다운로드하세요."
       },
       "kiroCrewCfgTab": {
         "agent_for_pool_processes_empty_uses_default_agent": "대기 에이전트가 어떤 크루메이트로 시작할지. 비우면 기본 크루메이트.",

@@ -193,20 +193,26 @@ class InProcessEmbedder:
         except Exception:  # noqa: BLE001
             logger.debug("embedding prefetch failed", exc_info=True)
 
-    def embed(self, text: str, *, priority: int = PRIORITY_NORMAL) -> list[float] | None:
+    def embed(
+        self, text: str, *, priority: int = PRIORITY_NORMAL, query: bool = False
+    ) -> list[float] | None:
         """Embed a single text. Returns float list or None on failure.
 
         *priority* is the scheduling class (``PRIORITY_*``) forwarded to the
         shared backend, which orders competing callers on the one in-process
         model and sizes its thread pool per class — corpus loops pass
         ``PRIORITY_BULK`` so they run on the reduced bulk pool and an
-        interactive embed is served ahead of them.
+        interactive embed is served ahead of them. *query* selects the model's
+        query prompt instead of its document one.
         """
         if not text.strip():
             return None
         if not self.is_available():
             return None
-        vec = self._get_embedder().embed(text, priority=priority)
+        backend = self._get_embedder()
+        vec = backend.embed(
+            _embeddings.prompted_text(backend, text, query=query), priority=priority
+        )
         if vec is None:
             # The backend stopped producing vectors (reset/reload failure) —
             # invalidate the cached availability so the next call re-probes
@@ -242,6 +248,10 @@ class InProcessEmbedder:
                 content = content[: self.content_budget]
             parts.append(content)
         return self.embed(" ".join(parts), priority=priority)
+
+    def embed_query(self, text: str) -> list[float] | None:
+        """Embed a search query, under the model's query prompt."""
+        return self.embed(text, query=True)
 
 
 # Keep the old name as an alias so references to OllamaEmbedder in type

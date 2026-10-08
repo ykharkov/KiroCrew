@@ -13,6 +13,7 @@ import and patch; this module never imports it.
 from __future__ import annotations
 
 import asyncio
+import functools
 import importlib
 import logging
 import os
@@ -38,7 +39,15 @@ from kiro_crew.dashboard.handlers._shared import (
 )
 from kiro_crew.dashboard.handlers.memory_services import _get_vector_store_async, _sel
 from kiro_crew.dashboard.state import DashboardState
+from kiro_crew.embedding_catalog import (
+    catalog_download_status,
+    catalog_model,
+    catalog_model_downloaded,
+    embedding_model_catalog,
+    start_catalog_download,
+)
 from kiro_crew.embeddings import (
+    _MODEL_ID,
     DOWNLOAD_ATTEMPTS_INTERACTIVE,
     LEGACY_EMBEDDING_WARNING,
     ReembedProgress,
@@ -127,9 +136,13 @@ _SETUP_STEP_LEGACY = {
 
 
 async def _write_embed_model_config(
-    path: str, dim: int
+    path: str, dim: int, label: str = ""
 ) -> tuple[Callable[[], Awaitable[None]], bool]:
-    """Return a conditional rollback and inheritance from the locked prior settings."""
+    """Return a conditional rollback and inheritance from the locked prior settings.
+
+    *label* is the identity label the model is recorded under (see
+    :func:`build_gated_candidate`).
+    """
     import uuid
 
     path = str(Path(path).expanduser()) if path else ""
@@ -138,7 +151,7 @@ async def _write_embed_model_config(
     def _record_model() -> tuple[str, list[int]]:
         model = Path(path)
         stamp = _model_file_stamp(model)
-        model_id = _custom_model_id(model, "")
+        model_id = _custom_model_id(model, label)
         if _model_file_stamp(model) != stamp:
             raise OSError("embedding model changed while recording its identity")
         return model_id, list(stamp)
@@ -231,8 +244,18 @@ def _store_progress_adapter(
     return report
 
 
-def _apply_embedding_model(store: object, raw: str, loop: "asyncio.AbstractEventLoop") -> None:
+def _apply_embedding_model(
+    store: object,
+    raw: str,
+    loop: "asyncio.AbstractEventLoop",
+    *,
+    label: str = "",
+    expected_model_id: str = "",
+) -> None:
     """Blocking apply of a model change. Runs on a worker thread, never the loop.
+
+    A catalog model passes its id as *label* and its pinned id as
+    *expected_model_id*, which the file must hash to before anything is swapped.
 
     The candidate is loaded EXACTLY ONCE and is GATED for its whole lifetime as a
     candidate. That combination is what makes a live swap safe:
@@ -283,7 +306,15 @@ def _apply_embedding_model(store: object, raw: str, loop: "asyncio.AbstractEvent
                 prog.fail(verr)
                 return
             raw = str(candidate)
-            install_shared_embedder(build_gated_candidate(candidate))
+            if expected_model_id and _custom_model_id(candidate, label) != expected_model_id:
+                # A corrupted or replaced download. Removed so the Memory tab
+                # offers the download again instead of an Apply that cannot work.
+                candidate.unlink(missing_ok=True)
+                prog.fail(
+                    "the downloaded model does not match its pinned digest; download it again"
+                )
+                return
+            install_shared_embedder(build_gated_candidate(candidate, label))
         else:
             # Reverting to the bundled model takes the SAME gated path. Its width
             # is known, but the file is a download and can be absent — persisting
@@ -322,7 +353,9 @@ def _apply_embedding_model(store: object, raw: str, loop: "asyncio.AbstractEvent
 
         # Digest and persistence failures must leave stored vectors intact.
         # The candidate stays gated until every store accepts the new space.
-        fut = asyncio.run_coroutine_threadsafe(_write_embed_model_config(raw, embedder.dim), loop)
+        fut = asyncio.run_coroutine_threadsafe(
+            _write_embed_model_config(raw, embedder.dim, label), loop
+        )
         restore_config, inherited_vectors = fut.result()
         if raw and _read_memory_config().get("embed_model_id") != embedder.model_id:
             raise OSError("model weights changed during apply; retry the model change")
@@ -408,8 +441,10 @@ def _apply_embedding_model(store: object, raw: str, loop: "asyncio.AbstractEvent
 async def api_memory_embedding_model(request: web.Request) -> web.Response:
     """POST /api/memory/embedding-model — validate and apply a custom model.
 
-    Body: ``{"path": "<absolute path to .gguf>", "validate_only": bool}``.
-    An empty ``path`` reverts to the bundled model.
+    Body: ``{"path": "<absolute path to .gguf>", "validate_only": bool}``, or
+    ``{"catalog_id": "<id>", "download": bool}`` for a first-class model:
+    ``download`` fetches its pinned file, otherwise the downloaded file is
+    applied. An empty ``path`` reverts to the bundled model.
 
     The dimension is NOT taken from the caller: it is read off the loaded model
     (``n_embd``), so the user cannot get it wrong and the UI needs no dim field.
@@ -441,6 +476,47 @@ async def api_memory_embedding_model(request: web.Request) -> web.Response:
 
     raw = str(body.get("path", "") or "").strip()
     validate_only = bool(body.get("validate_only"))
+    # A catalog model is named by id only: its file, label and digest come from
+    # the catalog, never from the caller.
+    catalog_id = str(body.get("catalog_id", "") or "").strip()
+    label = expected_model_id = ""
+    if catalog_id:
+        entry = catalog_model(catalog_id)
+        if entry is None:
+            return web.json_response(
+                {"ok": False, "error": "unknown catalog model", "code": "catalog_model_unknown"},
+                status=400,
+            )
+        if body.get("download"):
+            if catalog_model_downloaded(entry):
+                return web.json_response({"ok": True, "status": "ready"})
+            if not start_catalog_download(entry):
+                return web.json_response(
+                    {
+                        "ok": False,
+                        "error": "a model download is already running",
+                        "code": "catalog_download_in_progress",
+                    },
+                    status=409,
+                )
+            _sel().log_api_access(
+                caller=request.headers.get("X-Session-Key", ""),
+                operation="memory.embedding_model",
+                outcome="allowed",
+                source="dashboard",
+                resources=f"download:{entry.id}",
+            )
+            return web.json_response({"ok": True, "status": "downloading"})
+        if not catalog_model_downloaded(entry):
+            return web.json_response(
+                {
+                    "ok": False,
+                    "error": "download the model first",
+                    "code": "catalog_model_not_downloaded",
+                },
+                status=409,
+            )
+        raw, label, expected_model_id = str(entry.path), entry.id, entry.model_id
 
     # Validate BEFORE writing, so a typo never lands in config.
     size_bytes = 0
@@ -533,7 +609,17 @@ async def api_memory_embedding_model(request: web.Request) -> web.Response:
     # bad file never displaces a working configuration.
     prog.begin_apply()
     loop = asyncio.get_running_loop()
-    task = loop.run_in_executor(embed_executor(), _apply_embedding_model, store, raw, loop)
+    task = loop.run_in_executor(
+        embed_executor(),
+        functools.partial(
+            _apply_embedding_model,
+            store,
+            raw,
+            loop,
+            label=label,
+            expected_model_id=expected_model_id,
+        ),
+    )
     # Retain the future so it is not garbage-collected mid-apply.
     state._embed_model_apply_task = task  # type: ignore[attr-defined]
     return web.json_response({"ok": True, "size_bytes": size_bytes, "status": "applying"})
@@ -696,6 +782,24 @@ async def api_memory_embedding_status(request: web.Request) -> web.Response:
             # in-memory pattern as the download status above, so the card's
             # existing 2s poll picks it up with no new endpoint.
             "reembed": progress,
+            # The first-class models the Memory tab offers to download and apply,
+            # beside the bundled one it can always revert to.
+            "bundled_model_id": _MODEL_ID,
+            "catalog": [
+                {
+                    "id": entry.id,
+                    "name": entry.name,
+                    "repo": entry.repo,
+                    "size_bytes": entry.size_bytes,
+                    "dim": entry.dim,
+                    "license": entry.license,
+                    "license_url": entry.license_url,
+                    "downloaded": catalog_model_downloaded(entry),
+                    "active": embedder.model_id == entry.model_id,
+                }
+                for entry in embedding_model_catalog()
+            ],
+            "catalog_download": catalog_download_status(),
         }
     )
 

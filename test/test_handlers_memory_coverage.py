@@ -1058,7 +1058,7 @@ class TestEpisodicEndpoints:
         state = _make_state(vector_store=store)
         req = _make_request(state, query={"q": "hello"})
         assert (await mem_mod.api_memory_episodic_search(req)).status == 200
-        store._try_embed.assert_called_once_with("hello")
+        store._try_embed.assert_called_once_with("hello", query=True)
         assert store.search_episodic.call_args.kwargs["query_embedding"] == [0.1]
 
     @pytest.mark.asyncio
@@ -2259,6 +2259,89 @@ class TestEmbeddingModelEndpoint:
             await asyncio.wrap_future(state._embed_model_apply_task)
         apply_mock.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_a_catalog_model_is_applied_from_its_pinned_file(self) -> None:
+        from kiro_crew.embedding_catalog import embedding_model_catalog
+
+        entry = embedding_model_catalog()[0]
+        state = _make_state(vector_store=_store())
+        req = _make_request(state, method="POST", json_body={"catalog_id": entry.id})
+        with (
+            patch(f"{_MOD}.reembed_progress", return_value=_prog()),
+            patch(f"{_MOD}.catalog_model_downloaded", return_value=True),
+            patch(
+                f"{_MOD}.validate_custom_model_path",
+                side_effect=lambda raw, origin: (Path(raw), "", ""),
+            ),
+            patch(f"{_MOD}._apply_embedding_model") as apply_mock,
+        ):
+            resp = await mem_mod.api_memory_embedding_model(req)
+            assert resp.status == 200, _body(resp)
+            await asyncio.wrap_future(state._embed_model_apply_task)
+        assert apply_mock.call_args.args[1] == str(entry.path)
+        assert apply_mock.call_args.kwargs == {
+            "label": entry.id,
+            "expected_model_id": entry.model_id,
+        }
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("body", "downloaded", "status", "code"),
+        [
+            ({"catalog_id": "no-such-model"}, True, 400, "catalog_model_unknown"),
+            ({"catalog_id": "embeddinggemma-300m-q8"}, False, 409, "catalog_model_not_downloaded"),
+        ],
+        ids=["unknown", "not-downloaded"],
+    )
+    async def test_an_unusable_catalog_selection_is_refused_before_any_work(
+        self, body: dict, downloaded: bool, status: int, code: str
+    ) -> None:
+        state = _make_state(vector_store=_store())
+        req = _make_request(state, method="POST", json_body=body)
+        with (
+            patch(f"{_MOD}.catalog_model_downloaded", return_value=downloaded),
+            patch(f"{_MOD}._apply_embedding_model") as apply_mock,
+        ):
+            resp = await mem_mod.api_memory_embedding_model(req)
+        assert (resp.status, _body(resp)["code"]) == (status, code)
+        apply_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("started", "status", "reply"),
+        [
+            (True, 200, {"ok": True, "status": "downloading"}),
+            (
+                False,
+                409,
+                {
+                    "ok": False,
+                    "error": "a model download is already running",
+                    "code": "catalog_download_in_progress",
+                },
+            ),
+        ],
+        ids=["starts", "one-at-a-time"],
+    )
+    async def test_download_starts_one_catalog_transfer(
+        self, started: bool, status: int, reply: dict
+    ) -> None:
+        state = _make_state()
+        req = _make_request(
+            state,
+            method="POST",
+            json_body={"catalog_id": "embeddinggemma-300m-q8", "download": True},
+        )
+        with (
+            patch(f"{_MOD}.catalog_model_downloaded", return_value=False),
+            patch(f"{_MOD}.start_catalog_download", return_value=started) as start,
+            patch(f"{_MOD}._apply_embedding_model") as apply_mock,
+        ):
+            resp = await mem_mod.api_memory_embedding_model(req)
+        assert (resp.status, _body(resp)) == (status, reply)
+        assert start.call_args.args[0].id == "embeddinggemma-300m-q8"
+        apply_mock.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # embedding-status custom-model branch
@@ -2744,7 +2827,7 @@ class TestApplyEmbeddingModelWorker:
         # Width restored to the model being restored, not left on the new one.
         assert store.set_embedding_dim.call_args_list[-1][0][0] == 512
         assert "could not be removed" in h.prog.fail.call_args[0][0]
-        h.write.assert_awaited_once_with("", 1024)
+        h.write.assert_awaited_once_with("", 1024, "")
         h.rollback.assert_awaited_once()
         h.activate.assert_not_called()
 

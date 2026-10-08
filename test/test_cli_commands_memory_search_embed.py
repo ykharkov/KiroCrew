@@ -55,7 +55,7 @@ class _RecordingStore:
     def recorded_embedding_space(self) -> str:
         return "sig-of-the-active-model"
 
-    def _try_embed(self, text: str) -> list[float] | None:
+    def _try_embed(self, text: str, *, query: bool = False) -> list[float] | None:
         # Mirrors the real method: routes through whatever ``embed_fn`` is bound.
         return self.embed_fn(text) if self.embed_fn is not None else None
 

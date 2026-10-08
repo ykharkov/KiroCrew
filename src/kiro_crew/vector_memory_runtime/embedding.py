@@ -50,9 +50,12 @@ class _RecallSpaceChanged(Exception):
 
 
 def try_embed(
-    store: VectorMemoryStore, text: str, priority: int = PRIORITY_NORMAL
+    store: VectorMemoryStore, text: str, priority: int = PRIORITY_NORMAL, *, query: bool = False
 ) -> list[float] | None:
     """Embed text using embed_fn if available.
+
+    *query* marks a search text, which the shared embedder prompts apart from a
+    stored document for models trained that way.
 
     If embed_fn is None but embed_fn_factory is set, attempt to lazily
     rebind embed_fn (rate-limited via cooldown). This recovers from the
@@ -138,7 +141,9 @@ def try_embed(
             # A managed call pins its producer through cache/coalescing too;
             # a later singleton replacement cannot relabel its result.
             if producer is not None:
-                result = embeddings._shared_sync_embed(text, priority=priority, backend=producer)
+                result = embeddings._shared_sync_embed(
+                    text, priority=priority, backend=producer, query=query
+                )
             elif getattr(store.embed_fn, "accepts_priority", False):
                 result = store.embed_fn(text, priority=priority)  # type: ignore[call-arg]
             else:

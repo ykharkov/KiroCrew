@@ -484,7 +484,8 @@ class TestSemanticRecallWiring(_Env):
         store, _literal, semantic = self._real_store_with_semantic_pair()
         self.assertEqual(dispatch._SIMILAR_QUERY_TIMEOUT_SECS, 5.0)
 
-        def _query_vector(text: str, priority: int) -> list[float]:
+        def _query_vector(text: str, priority: int, *, query: bool) -> list[float]:
+            self.assertTrue(query, "dispatch embeds a search query, not a stored document")
             work = embedding_work.get()
             self.assertIsNotNone(work, "dispatch must carry an explicit embedding deadline")
             assert work is not None

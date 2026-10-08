@@ -14561,7 +14561,21 @@
         "will_revert": "Vuoto: tornerà al modello incluso.",
         "err_env_override_with_ref": "<settingRef/> è impostata e sovrascrive questa impostazione. Rimuovila per cambiare il modello qui.",
         "apply_reapply": "Ricostruisci i vettori di memoria",
-        "confirm_reapply_body": "Questa operazione ricarica il modello configurato e cancella e ricostruisce i vettori di memoria archiviati."
+        "confirm_reapply_body": "Questa operazione ricarica il modello configurato e cancella e ricostruisce i vettori di memoria archiviati.",
+        "badge_catalog": "consigliato",
+        "tab_catalog": "Da Hugging Face",
+        "tab_local": "File locale",
+        "source_label": "Origine del modello",
+        "catalog_hint": "Scaricato da Hugging Face nella cartella dati e verificato con uno SHA-256 fissato.",
+        "model_select_label": "Modello",
+        "catalog_meta": "{{mb}} MB · {{dim}}d",
+        "download": "Scarica",
+        "downloading": "Download in corso… {{pct}}%",
+        "download_verifying": "Verifica del download…",
+        "download_failed": "Download non riuscito. Controlla la connessione di rete e riprova.",
+        "in_use": "In uso",
+        "err_download_in_progress": "È già in corso il download di un altro modello. Attendi che finisca.",
+        "err_not_downloaded": "Scarica il modello prima di applicarlo."
       },
       "kiroCrewCfgTab": {
         "agent_for_pool_processes_empty_uses_default_agent": "Come quale compagno partono gli agenti in attesa. Vuoto usa il compagno predefinito.",

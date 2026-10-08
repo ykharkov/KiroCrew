@@ -14109,7 +14109,21 @@
         "will_revert": "空です。バンドルされたモデルに戻ります。",
         "err_env_override_with_ref": "<settingRef/> が設定されており、この設定を上書きしています。ここでモデルを変更するには、設定を解除してください。",
         "apply_reapply": "メモリベクトルを再構築",
-        "confirm_reapply_body": "設定済みのモデルを再読み込みし、保存されているメモリベクトルを消去して再構築します。"
+        "confirm_reapply_body": "設定済みのモデルを再読み込みし、保存されているメモリベクトルを消去して再構築します。",
+        "badge_catalog": "推奨",
+        "tab_catalog": "Hugging Face から",
+        "tab_local": "ローカルファイル",
+        "source_label": "モデルの取得元",
+        "catalog_hint": "Hugging Face からデータホームにダウンロードし、固定された SHA-256 で検証します。",
+        "model_select_label": "モデル",
+        "catalog_meta": "{{mb}} MB · {{dim}}d",
+        "download": "ダウンロード",
+        "downloading": "ダウンロード中… {{pct}}%",
+        "download_verifying": "ダウンロードを検証中…",
+        "download_failed": "ダウンロードに失敗しました。ネットワーク接続を確認して、もう一度お試しください。",
+        "in_use": "使用中",
+        "err_download_in_progress": "別のモデルをダウンロード中です。完了するまでお待ちください。",
+        "err_not_downloaded": "適用する前にモデルをダウンロードしてください。"
       },
       "kiroCrewCfgTab": {
         "agent_for_pool_processes_empty_uses_default_agent": "待機エージェントをどのクルーメイトとして起動するか。空欄は既定のクルーメイト。",

@@ -271,7 +271,7 @@ def _attach_similar_safely(claimed: ClaimedIncident) -> None:
         token = embedding_work.set(work)
         try:
             if query:
-                query_embedding = store_obj._try_embed(query, PRIORITY_INTERACTIVE)
+                query_embedding = store_obj._try_embed(query, PRIORITY_INTERACTIVE, query=True)
         except Exception:  # noqa: BLE001 — keyword recall remains useful without a vector
             logger.debug(
                 "ops-mission-control: query embedding unavailable; using keyword recall",

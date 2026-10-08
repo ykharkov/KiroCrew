@@ -322,7 +322,7 @@ _STORE_SIGNATURES = {
     "_stamp_facets": "(self, item_id: 'str', facets: \"'memory_schema.MemoryFacets | None'\") -> 'None'",
     "_stored_similarity_scorer": "(query_emb: 'list[float] | None') -> 'Callable[[dict], float]'",
     "_touch_last_accessed": "(self, mem_ids: 'list[str]') -> 'None'",
-    "_try_embed": "(self, text: 'str', priority: 'int' = 1) -> 'list[float] | None'",
+    "_try_embed": "(self, text: 'str', priority: 'int' = 1, *, query: 'bool' = False) -> 'list[float] | None'",
     "_validate_key": "(self, key: 'str') -> 'str | None'",
     "_vector_commit": "(self, vector: 'list[float] | None', *, best_effort: 'bool' = False)",
     "_write_history": "(self, day: 'str', content: 'str') -> 'None'",

@@ -14109,7 +14109,21 @@
         "will_revert": "为空 — 将恢复为内置模型。",
         "err_env_override_with_ref": "<settingRef/> 已设置并覆盖此设置。取消设置以在此处更改模型。",
         "apply_reapply": "重建记忆向量",
-        "confirm_reapply_body": "此操作会重新加载已配置的模型，并清除、重建已存储的记忆向量。"
+        "confirm_reapply_body": "此操作会重新加载已配置的模型，并清除、重建已存储的记忆向量。",
+        "badge_catalog": "推荐",
+        "tab_catalog": "来自 Hugging Face",
+        "tab_local": "本地文件",
+        "source_label": "模型来源",
+        "catalog_hint": "从 Hugging Face 下载到数据目录，并按固定的 SHA-256 校验。",
+        "model_select_label": "模型",
+        "catalog_meta": "{{mb}} MB · {{dim}}维",
+        "download": "下载",
+        "downloading": "正在下载… {{pct}}%",
+        "download_verifying": "正在校验下载…",
+        "download_failed": "下载失败。请检查网络连接后重试。",
+        "in_use": "使用中",
+        "err_download_in_progress": "另一个模型正在下载，请等待其完成。",
+        "err_not_downloaded": "请先下载模型再应用。"
       },
       "kiroCrewCfgTab": {
         "agent_for_pool_processes_empty_uses_default_agent": "等待中的代理以哪个成员身份启动。留空则用默认成员。",

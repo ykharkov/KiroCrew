@@ -186,8 +186,9 @@ export function createMemoryEndpoints({ get, post, put, del, j, jfetch: fetch }:
     vectorEnableEmbeddings: () => post('/api/memory/enable-embeddings').then(j),
     vectorValidateEmbedModel: (path: string) =>
       post('/api/memory/embedding-model', { path, validate_only: true }).then(j),
-    vectorApplyEmbedModel: (path: string) =>
-      post('/api/memory/embedding-model', { path }).then(j),
+    // `catalog_id` selects a first-class model instead of a path, and `download` fetches it.
+    vectorApplyEmbedModel: (path: string, options: { catalog_id?: string; download?: boolean } = {}) =>
+      post('/api/memory/embedding-model', { path, ...options }).then(j),
     vectorDisableEmbeddings: () => post('/api/memory/disable-embeddings').then(j),
     vectorImport: (data: object) => post('/api/memory/import', data).then(j),
     vectorContextPreview: (query?: string) => fetch('/api/memory/context-preview' + (query ? '?q=' + encodeURIComponent(query) : '')).then(j),

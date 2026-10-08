@@ -1,0 +1,36 @@
+{
+  "models": [
+    {
+      "id": "embeddinggemma-300m-q8",
+      "name": "EmbeddingGemma-300M",
+      "repo": "ggml-org/embeddinggemma-300M-GGUF",
+      "revision": "0f741b5a6585bd53aeb15cd1372c56f2a0f65e12",
+      "file": "embeddinggemma-300M-Q8_0.gguf",
+      "sha256": "b5ce9d77a3fc4b3b39ccb5643c36777911cc4eb46a66962eadfa3f5f60490d63",
+      "size_bytes": 333590944,
+      "dim": 768,
+      "pooling": "mean",
+      "add_bos": true,
+      "query_prefix": "task: search result | query: ",
+      "document_prefix": "title: none | text: ",
+      "license": "Gemma Terms of Use",
+      "license_url": "https://ai.google.dev/gemma/terms"
+    },
+    {
+      "id": "nemotron-3-embed-1b-q8",
+      "name": "Nemotron-3-Embed-1B",
+      "repo": "NeoRoth/nemotron-3-embed-1b-gguf",
+      "revision": "f84afc52469e77beb5cc9ca17b36fb2e76dca6f1",
+      "file": "nemotron-3-embed-1b-q8_0.gguf",
+      "sha256": "58e41095862c50bc084bb8afa9b00e586733faaef2627d88c3e04da80d8d8e92",
+      "size_bytes": 1220293760,
+      "dim": 2048,
+      "pooling": "mean",
+      "add_bos": false,
+      "query_prefix": "query: ",
+      "document_prefix": "passage: ",
+      "license": "OpenMDW-1.1",
+      "license_url": "https://huggingface.co/NeoRoth/nemotron-3-embed-1b-gguf"
+    }
+  ]
+}

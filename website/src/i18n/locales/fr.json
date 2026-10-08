@@ -14561,7 +14561,21 @@
         "will_revert": "Vide : retour au modèle intégré.",
         "err_env_override_with_ref": "<settingRef/> est définie et remplace ce paramètre. Supprimez-la pour changer le modèle ici.",
         "apply_reapply": "Reconstruire les vecteurs de mémoire",
-        "confirm_reapply_body": "Cette action recharge le modèle configuré et efface puis reconstruit les vecteurs de mémoire stockés."
+        "confirm_reapply_body": "Cette action recharge le modèle configuré et efface puis reconstruit les vecteurs de mémoire stockés.",
+        "badge_catalog": "recommandé",
+        "tab_catalog": "Depuis Hugging Face",
+        "tab_local": "Fichier local",
+        "source_label": "Source du modèle",
+        "catalog_hint": "Téléchargé depuis Hugging Face dans le répertoire de données et vérifié avec un SHA-256 épinglé.",
+        "model_select_label": "Modèle",
+        "catalog_meta": "{{mb}} Mo · {{dim}}d",
+        "download": "Télécharger",
+        "downloading": "Téléchargement… {{pct}} %",
+        "download_verifying": "Vérification du téléchargement…",
+        "download_failed": "Échec du téléchargement. Vérifie ta connexion réseau et réessaie.",
+        "in_use": "Utilisé",
+        "err_download_in_progress": "Un autre modèle est en cours de téléchargement. Attends qu’il se termine.",
+        "err_not_downloaded": "Télécharge le modèle avant de l’appliquer."
       },
       "kiroCrewCfgTab": {
         "agent_for_pool_processes_empty_uses_default_agent": "Le coéquipier sous lequel démarrent les agents en attente. Vide utilise le coéquipier par défaut.",

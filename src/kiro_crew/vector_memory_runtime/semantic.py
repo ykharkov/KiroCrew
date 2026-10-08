@@ -822,7 +822,7 @@ def semantic_candidates_v1(
     if recall_query is not None:
         query_embedding = recall_query.vector
     elif store.embed_fn:
-        query_embedding = store._try_embed(query_text, PRIORITY_INTERACTIVE)
+        query_embedding = store._try_embed(query_text, PRIORITY_INTERACTIVE, query=True)
     else:
         query_embedding = None
 
@@ -1168,7 +1168,7 @@ def semantic_candidates_v2(
     if recall_query is not None:
         query_embedding = recall_query.vector
     elif query_text and store.embed_fn:
-        query_embedding = store._try_embed(query_text, PRIORITY_INTERACTIVE)
+        query_embedding = store._try_embed(query_text, PRIORITY_INTERACTIVE, query=True)
     else:
         query_embedding = None
     query_terms = memory_v2.terms(query_text)

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Cpu, CheckCircle, XCircle, Loader2 } from 'lucide-react'
+import { Cpu, CheckCircle, XCircle, Loader2, Download } from 'lucide-react'
 import { Trans } from 'react-i18next'
 import { api } from '../../api/client'
 import { Card, CardTitle, Btn, Input, Badge } from '../../components/ui'
@@ -9,6 +9,9 @@ import ErrorNotice from '../../components/ErrorNotice'
 import { i18nT } from '../../i18n/t'
 import { embeddingRepairMessage, isModelPathErrorCode, EMBED_MODEL_PATH_ID, type EmbeddingSetupFields } from './embeddingStatusText'
 import { SettingRef } from '../../components/settingRef/SettingRef'
+import SegmentedControl from '../../components/SegmentedControl'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../components/ui/select'
+import { formatEmbedModel } from './VectorMemoryCard'
 
 /** Live re-embed progress, mirrored from the backend's ReembedProgress. */
 export interface ReembedState {
@@ -24,7 +27,41 @@ export interface EmbedModelStatus extends EmbeddingSetupFields {
   model_source?: string  // 'default' | 'custom'
   model_path?: string
   reembed?: ReembedState
+  bundled_model_id?: string
+  catalog?: CatalogModel[]
+  catalog_download?: CatalogDownload
 }
+
+/** A first-class model the backend offers to download from Hugging Face. */
+export interface CatalogModel {
+  id: string
+  name: string
+  repo: string
+  size_bytes: number
+  dim: number
+  license: string
+  license_url: string
+  downloaded: boolean
+  active: boolean
+}
+
+/** The one catalog download in flight or last finished. */
+export interface CatalogDownload {
+  id?: string
+  step?: string          // idle | downloading | verifying | ready | failed
+  error?: string
+  bytes_downloaded?: number
+  bytes_total?: number
+}
+
+function catalogDownloadBusy(d: CatalogDownload | undefined): boolean {
+  return d?.step === 'downloading' || d?.step === 'verifying'
+}
+
+// The bundled model's option in the model dropdown. Radix refuses an empty
+// option value, and a catalog id cannot contain ':', so the two never collide.
+const BUNDLED_OPTION = ':bundled'
+
 
 /** Bar geometry: how wide to draw the fill, and whether it means "unknown".
  *
@@ -83,6 +120,8 @@ const EMBED_ERROR_KEYS = {
   config: 'pages.overview.embedModel.err_config',
   restricted: 'pages.overview.embedModel.err_restricted',
   envOverride: 'pages.overview.embedModel.err_env_override',
+  downloadInProgress: 'pages.overview.embedModel.err_download_in_progress',
+  notDownloaded: 'pages.overview.embedModel.err_not_downloaded',
 } as const
 
 /** Localize a backend error by its machine-readable `code`.
@@ -121,6 +160,8 @@ export function embedModelErrorMessage(err: unknown): string {
     case 'config_unparseable': return i18nT(EMBED_ERROR_KEYS.config)
     case 'restricted_session': return i18nT(EMBED_ERROR_KEYS.restricted)
     case 'env_override_active': return i18nT(EMBED_ERROR_KEYS.envOverride)
+    case 'catalog_download_in_progress': return i18nT(EMBED_ERROR_KEYS.downloadInProgress)
+    case 'catalog_model_not_downloaded': return i18nT(EMBED_ERROR_KEYS.notDownloaded)
     default: return prose || String(err)
   }
 }
@@ -154,6 +195,7 @@ export default function EmbeddingModelCard() {
     refetchOnReconnect: false,
     refetchInterval: query => {
       const progress = query.state.data?.reembed
+      if (catalogDownloadBusy(query.state.data?.catalog_download)) return POLL_MS
       return progress?.step === 'deferred' ? 30000 : reembedBusy(progress) ? POLL_MS : false
     },
   })
@@ -165,6 +207,13 @@ export default function EmbeddingModelCard() {
   const [checked, setChecked] = useState<{ ok: boolean; msg: string; code?: string } | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [applying, setApplying] = useState(false)
+  // Which tab the user picked; until then the tab follows the configured model.
+  const [source, setSource] = useState<'catalog' | 'local' | null>(null)
+  // The dropdown's choice; until one is made it follows the configured model.
+  const [selected, setSelected] = useState<string | null>(null)
+  // What the confirm modal applies from the Hugging Face tab; null is the Local tab.
+  const [catalogTarget, setCatalogTarget] = useState<string | null>(null)
+  const [catalogError, setCatalogError] = useState('')
   // Mirror of `touched` that a fetch already in flight can read when its
   // response lands. The closure value is the edit state at the time the request
   // was SENT; a keystroke typed while the response is pending would otherwise be
@@ -181,12 +230,24 @@ export default function EmbeddingModelCard() {
     } catch { /* the Memory card surfaces connection errors */ }
   }, [queryClient])
 
+  const isCustom = status?.model_source === 'custom'
+  const catalog = status?.catalog ?? []
+  const activeCatalog = catalog.find(m => m.active)
+  // A catalog model's file is not a local choice, so it leaves the Local tab empty.
+  const localPath = activeCatalog ? '' : status?.model_path || ''
+
   useEffect(() => {
     // Background status refreshes must never replace an in-progress draft.
-    if (status && !touchedRef.current) setPath(status.model_path || '')
-  }, [status])
+    if (status && !touchedRef.current) setPath(localPath)
+  }, [status, localPath])
 
-  const isCustom = status?.model_source === 'custom'
+  // No catalog (an older backend) keeps the single path form.
+  const tab = catalog.length === 0 ? 'local' : source ?? (localPath ? 'local' : 'catalog')
+  const choice = selected ?? activeCatalog?.id ?? (localPath && catalog[0] ? catalog[0].id : BUNDLED_OPTION)
+  const chosen = catalog.find(m => m.id === choice)
+  const chosenActive = chosen ? chosen.active : !isCustom
+  const download = status?.catalog_download
+  const chosenDownload = chosen && download?.id === chosen.id ? download : undefined
   const reembed = status?.reembed
   const busy = reembedBusy(reembed)
   const pct = reembedPct(reembed)
@@ -256,7 +317,11 @@ export default function EmbeddingModelCard() {
   // behind that path may well have been replaced, which is exactly when a
   // reapply is wanted. Any other path is a model change. The label never gates
   // the button: the disabled guards below are the same for both readings.
-  const samePath = !!status && path.trim() === (status.model_path || '')
+  // An empty field reverts to the bundled model, a reapply only while it is the one configured.
+  const samePath = !!status && path.trim() === localPath && (!!path.trim() || !isCustom)
+  // What the confirm modal applies: the Local tab's path, the bundled model or a
+  // catalog model, each a reapply when it names the configured model.
+  const reapply = catalogTarget == null ? samePath : catalogTarget === BUNDLED_OPTION ? !isCustom : catalogTarget === activeCatalog?.id
 
   const check = useCallback(async () => {
     const p = path.trim()
@@ -276,15 +341,26 @@ export default function EmbeddingModelCard() {
     setConfirmOpen(false)
     setApplying(true)
     try {
-      await api.vectorApplyEmbedModel(path.trim())
+      if (catalogTarget && catalogTarget !== BUNDLED_OPTION) await api.vectorApplyEmbedModel('', { catalog_id: catalogTarget })
+      else if (catalogTarget == null) await api.vectorApplyEmbedModel(path.trim())
+      else await api.vectorApplyEmbedModel('')
       touchedRef.current = false
       setTouched(false)
       setChecked(null)
       await load()
     } catch (e) {
-      setChecked({ ok: false, msg: embedModelErrorMessage(e), code: embedModelErrorCode(e) })
+      if (catalogTarget != null) setCatalogError(embedModelErrorMessage(e))
+      else setChecked({ ok: false, msg: embedModelErrorMessage(e), code: embedModelErrorCode(e) })
     } finally { setApplying(false) }
-  }, [path, load])
+  }, [catalogTarget, path, load])
+
+  const startDownload = useCallback(async (id: string) => {
+    setCatalogError('')
+    try {
+      await api.vectorApplyEmbedModel('', { catalog_id: id, download: true })
+      await load()
+    } catch (e) { setCatalogError(embedModelErrorMessage(e)) }
+  }, [load])
 
   return (
     <>
@@ -295,17 +371,85 @@ export default function EmbeddingModelCard() {
         {/* Active model */}
         <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-bg-elevated border border-border rounded mb-3">
           <span className="text-[13px]" data-testid="embed-model-active" data-state={modelState}>
-            {modelState === 'active' && i18nT('pages.overview.embedModel.active', { model: status?.model_id, dim: status?.model_dim })}
-            {modelState === 'inactive' && i18nT('pages.overview.embedModel.configured_inactive', { model: status?.model_id, dim: status?.model_dim })}
+            {modelState === 'active' && i18nT('pages.overview.embedModel.active', { model: activeCatalog?.name ?? status?.model_id, dim: status?.model_dim })}
+            {modelState === 'inactive' && i18nT('pages.overview.embedModel.configured_inactive', { model: activeCatalog?.name ?? status?.model_id, dim: status?.model_dim })}
             {modelState === 'unknown' && i18nT('pages.overview.embedModel.active_unknown')}
           </span>
           {modelState !== 'unknown' && (
             <Badge variant={modelState !== 'active' ? 'muted' : isCustom ? 'aim' : 'ok'} data-testid="embed-model-active-badge" data-state={modelState}>
-              {isCustom ? i18nT('pages.overview.embedModel.badge_custom') : i18nT('pages.overview.embedModel.badge_bundled')}
+              {activeCatalog ? i18nT('pages.overview.embedModel.badge_catalog') : isCustom ? i18nT('pages.overview.embedModel.badge_custom') : i18nT('pages.overview.embedModel.badge_bundled')}
             </Badge>
           )}
         </div>
 
+        {catalog.length > 0 && (
+          <div className="mb-3">
+            <SegmentedControl<'catalog' | 'local'>
+              segments={[
+                { key: 'catalog', label: i18nT('pages.overview.embedModel.tab_catalog') },
+                { key: 'local', label: i18nT('pages.overview.embedModel.tab_local') },
+              ]}
+              value={tab}
+              onChange={setSource}
+              layoutId="embed-model-source"
+              ariaLabel={i18nT('pages.overview.embedModel.source_label')}
+              collapse={false}
+            />
+          </div>
+        )}
+
+        {tab === 'catalog' && (
+          <div className="flex flex-col gap-1.5" data-testid="embed-model-catalog">
+            <div className="text-[11px] text-muted">{i18nT('pages.overview.embedModel.catalog_hint')}</div>
+            <div className="block text-[11px] text-muted mt-1">{i18nT('pages.overview.embedModel.model_select_label')}</div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex-1 min-w-[220px]">
+                <Select value={choice} onValueChange={value => { setSelected(value); setCatalogError('') }}>
+                  <SelectTrigger aria-label={i18nT('pages.overview.embedModel.model_select_label')}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={BUNDLED_OPTION}>{formatEmbedModel(status?.bundled_model_id)}</SelectItem>
+                    {catalog.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              {chosenActive
+                ? <Badge variant="ok">{i18nT('pages.overview.embedModel.in_use')}</Badge>
+                : chosen && !chosen.downloaded
+                  ? <Btn onClick={() => void startDownload(chosen.id)} disabled={!status || catalogDownloadBusy(download)}>
+                      {catalogDownloadBusy(chosenDownload) ? <Loader2 className="lucide-inline animate-spin" /> : <Download className="lucide-inline" />} {i18nT('pages.overview.embedModel.download')}
+                    </Btn>
+                  : <Btn primary onClick={() => { setCatalogTarget(chosen?.id ?? BUNDLED_OPTION); setCatalogError(''); setConfirmOpen(true) }} disabled={!status || busy || applying}>
+                      {i18nT('pages.overview.embedModel.apply')}
+                    </Btn>}
+            </div>
+            <div className="text-[11px] text-muted">
+              {chosen
+                ? <>
+                    {i18nT('pages.overview.embedModel.catalog_meta', { mb: Math.round(chosen.size_bytes / 1e6), dim: chosen.dim })}
+                    {' · '}
+                    <a href={chosen.license_url} target="_blank" rel="noopener noreferrer" className="underline" translate="no">{chosen.license}</a>
+                  </>
+                : i18nT('pages.overview.embedModel.badge_bundled')}
+            </div>
+            {catalogDownloadBusy(chosenDownload) && (
+              <div role="status" className="text-[11px] text-muted">
+                {chosenDownload?.step === 'verifying'
+                  ? i18nT('pages.overview.embedModel.download_verifying')
+                  : i18nT('pages.overview.embedModel.downloading', {
+                      pct: chosenDownload?.bytes_total ? Math.round(((chosenDownload.bytes_downloaded ?? 0) / chosenDownload.bytes_total) * 100) : 0,
+                    })}
+              </div>
+            )}
+            {/* No hand-off: an unsaved model-path draft on the Local tab would be lost. */}
+            {chosenDownload?.step === 'failed' && <ErrorNotice message={i18nT('pages.overview.embedModel.download_failed')} variant="inline" />}
+            {/* No hand-off: an unsaved model-path draft on the Local tab would be lost. */}
+            <ErrorNotice message={catalogError || undefined} variant="inline" />
+          </div>
+        )}
+
+        {tab === 'local' && <>
         {/* Path field */}
         <label className="block text-[11px] text-muted mb-1" htmlFor={EMBED_MODEL_PATH_ID}>
           {i18nT('pages.overview.embedModel.path_label')}
@@ -357,7 +501,7 @@ export default function EmbeddingModelCard() {
         <div className="flex items-center gap-2 mt-3">
           <Btn
             primary={!samePath}
-            onClick={() => setConfirmOpen(true)}
+            onClick={() => { setCatalogTarget(null); setConfirmOpen(true) }}
             disabled={!status || busy || applying || checking || checked?.ok === false || !!statusPathError}
           >
             {applying
@@ -368,6 +512,7 @@ export default function EmbeddingModelCard() {
           </Btn>
           <span className="text-[11px] text-muted">{i18nT('pages.overview.embedModel.no_restart')}</span>
         </div>
+        </>}
 
         {/* Re-embed progress */}
         {reembed && reembed.step !== 'idle' && (
@@ -445,7 +590,7 @@ export default function EmbeddingModelCard() {
       <Modal
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
-        title={samePath ? i18nT('pages.overview.embedModel.title') : i18nT('pages.overview.embedModel.confirm_title')}
+        title={reapply ? i18nT('pages.overview.embedModel.title') : i18nT('pages.overview.embedModel.confirm_title')}
         maxWidth={520}
         footer={
           <div className="flex justify-end gap-2">
@@ -453,13 +598,13 @@ export default function EmbeddingModelCard() {
               {i18nT('pages.overview.embedModel.cancel')}
             </Btn>
             <Btn primary onClick={apply}>
-              {samePath ? i18nT('pages.overview.embedModel.apply_reapply') : i18nT('pages.overview.embedModel.confirm_apply')}
+              {reapply ? i18nT('pages.overview.embedModel.apply_reapply') : i18nT('pages.overview.embedModel.confirm_apply')}
             </Btn>
           </div>
         }
       >
         <div className="text-[13px] space-y-2">
-          <p>{samePath ? i18nT('pages.overview.embedModel.confirm_reapply_body') : i18nT('pages.overview.embedModel.confirm_body')}</p>
+          <p>{reapply ? i18nT('pages.overview.embedModel.confirm_reapply_body') : i18nT('pages.overview.embedModel.confirm_body')}</p>
           <p className="text-muted">{i18nT('pages.overview.embedModel.confirm_detail')}</p>
         </div>
       </Modal>

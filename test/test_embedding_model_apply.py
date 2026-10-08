@@ -850,7 +850,7 @@ class TestRevertToBundledIsGatedToo:
         from kiro_crew.dashboard.handlers import memory as mem
 
         src = inspect.getsource(mem._apply_embedding_model)
-        assert "build_gated_candidate(candidate)" in src
+        assert "build_gated_candidate(candidate, label)" in src
         assert "build_gated_bundled()" in src
 
     def test_config_is_never_written_before_the_load_proves_out(self) -> None:
@@ -886,7 +886,7 @@ class TestReconcileOutcomeIsChecked:
         src = inspect.getsource(mem._apply_embedding_model)
         check_at = src.find("recorded_embedding_space()")
         activate_at = src.find("activate_shared_embedder()")
-        write_at = src.find("_write_embed_model_config(raw, embedder.dim)")
+        write_at = src.find("_write_embed_model_config(raw, embedder.dim, label)")
         assert -1 not in (check_at, activate_at, write_at)
         assert check_at < activate_at, "must not activate against an unreconciled store"
         assert write_at < check_at, "persist before clearing stored vectors"
@@ -926,7 +926,7 @@ class TestApplyOrdering:
 
     def test_activation_comes_after_config_write_and_reconcile(self) -> None:
         src = self._src()
-        write_at = src.find("_write_embed_model_config(raw, embedder.dim)")
+        write_at = src.find("_write_embed_model_config(raw, embedder.dim, label)")
         reconcile_at = src.find("reconcile_store_embedding_space(target)")
         activate_at = src.find("activate_shared_embedder()")
         assert -1 not in (write_at, reconcile_at, activate_at)
@@ -937,7 +937,7 @@ class TestApplyOrdering:
         """A write failure preserves vectors; an alignment failure restores config."""
         src = self._src()
         reconcile_at = src.find("reconcile_store_embedding_space(target)")
-        write_at = src.find("_write_embed_model_config(raw, embedder.dim)")
+        write_at = src.find("_write_embed_model_config(raw, embedder.dim, label)")
         assert -1 not in (reconcile_at, write_at)
         assert write_at < reconcile_at
         assert src.find("restore_config(), loop") < src.rfind("reset_shared_embedder()")
@@ -1090,7 +1090,7 @@ class TestPathIsValidatedAtPointOfUse:
         )
         # The backend must be built from the VALIDATED path, never from a
         # re-derived raw string.
-        assert "build_gated_candidate(candidate)" in src
+        assert "build_gated_candidate(candidate, label)" in src
         assert "build_gated_candidate(Path(raw)" not in src
 
 

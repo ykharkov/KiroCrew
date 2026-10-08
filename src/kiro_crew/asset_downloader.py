@@ -186,6 +186,7 @@ _SAME_HOST_POLICY = (
     " redirects across hosts is honoured only when set through the environment override)"
 )
 _HTTPS_ONLY_POLICY = "the transfer stays on https"
+_DOMAIN_ALLOWLIST_POLICY = "the transfer stays on https within the source's own domains"
 
 
 class _SameHostRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -261,8 +262,45 @@ class _HttpsOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+class _DomainAllowlistRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect only to https on the default port of a named domain.
+
+    For a url fixed in shipped package data whose host is known to hand the
+    transfer to its own storage CDN (Hugging Face answers ``huggingface.co`` with
+    a redirect to ``*.hf.co``). The caller names the domains, so the hop can only
+    land on hosts it already trusts; a subdomain of a named domain counts.
+    """
+
+    def __init__(self, domains: tuple[str, ...]) -> None:
+        super().__init__()
+        self._domains = tuple(domain.lower() for domain in domains)
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        try:
+            target = urllib.parse.urlsplit(newurl)
+            host = (target.hostname or "").lower()
+            allowed = (
+                target.scheme == "https"
+                and (target.port or 443) == 443
+                and any(host == domain or host.endswith("." + domain) for domain in self._domains)
+            )
+        except ValueError:
+            allowed = False
+        if not allowed:
+            logger.warning(
+                "refusing a redirect from %s to %s outside the allowed domains",
+                redact_url(req.full_url),
+                redact_url(newurl),
+            )
+            raise RedirectRefused(req.full_url, newurl, _DOMAIN_ALLOWLIST_POLICY)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def build_opener(
-    context: "ssl.SSLContext | None" = None, *, allow_cross_host_redirects: bool = False
+    context: "ssl.SSLContext | None" = None,
+    *,
+    allow_cross_host_redirects: bool = False,
+    redirect_domains: tuple[str, ...] = (),
 ) -> urllib.request.OpenerDirector:
     """An opener that verifies TLS and pins redirects.
 
@@ -276,8 +314,16 @@ def build_opener(
     *allow_cross_host_redirects* selects :class:`_HttpsOnlyRedirectHandler` in
     place of :class:`_SameHostRedirectHandler`. It is for a url the operator set
     in the process environment and nothing else — see the module docstring.
+    *redirect_domains*, when given, selects :class:`_DomainAllowlistRedirectHandler`
+    instead, for a url fixed in package data whose host redirects to its own CDN.
     """
-    handler = _HttpsOnlyRedirectHandler if allow_cross_host_redirects else _SameHostRedirectHandler
+    handler: "type[urllib.request.HTTPRedirectHandler] | urllib.request.HTTPRedirectHandler"
+    if redirect_domains:
+        handler = _DomainAllowlistRedirectHandler(redirect_domains)
+    elif allow_cross_host_redirects:
+        handler = _HttpsOnlyRedirectHandler
+    else:
+        handler = _SameHostRedirectHandler
     return urllib.request.build_opener(
         urllib.request.HTTPSHandler(context=context or make_ssl_context()), handler
     )
@@ -774,6 +820,7 @@ def download_to(
     on_verifying: Callable[[], None] | None = None,
     restrict_to_owner: bool = False,
     allow_cross_host_redirects: bool = False,
+    redirect_domains: tuple[str, ...] = (),
     label: str = "asset",
     target_dir: TargetDir | None = None,
 ) -> tuple[bool, str]:
@@ -810,6 +857,9 @@ def download_to(
       environment, and nothing else: their mirror may redirect to another https
       host and the pin still decides. A url from a CDN, a signed manifest or a
       config file keeps the default, which refuses to leave the host.
+    * *redirect_domains* is for a url fixed in shipped package data whose host
+      redirects to its own CDN: a hop may land only on https at a named domain or
+      one of its subdomains.
     * *target_dir* is the handle every filesystem step goes through. A caller
       that has pinned ``path.parent`` (:func:`pin_target_dir`) passes it and the
       staging file, the install rename and the lockdown all address the directory
@@ -863,8 +913,11 @@ def download_to(
         if offset:
             request.add_header("Range", f"bytes={offset}-")
         logger.info("Downloading %s from %s", label, redact_url(url))
-        opener = build_opener(allow_cross_host_redirects=allow_cross_host_redirects)
-        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- https is enforced above, redirects are pinned (host-pinned unless the operator's own env url), and the payload is sha256-pinned
+        opener = build_opener(
+            allow_cross_host_redirects=allow_cross_host_redirects,
+            redirect_domains=redirect_domains,
+        )
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- https is enforced above, redirects are pinned (host-pinned unless the operator's own env url, or domain-pinned for a package-data url), and the payload is sha256-pinned
         with opener.open(request, timeout=timeout_secs) as resp:
             status = int(getattr(resp, "status", 0) or 0)
             if offset and status != _HTTP_PARTIAL_CONTENT:

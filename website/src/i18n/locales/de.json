@@ -14335,7 +14335,21 @@
         "will_revert": "Leer – es wird zum mitgelieferten Modell zurückgewechselt.",
         "err_env_override_with_ref": "<settingRef/> ist gesetzt und überschreibt diese Einstellung. Entfernen Sie es, um das Modell hier zu ändern.",
         "apply_reapply": "Speichervektoren neu erstellen",
-        "confirm_reapply_body": "Dadurch wird das konfigurierte Modell neu geladen und die gespeicherten Speichervektoren werden gelöscht und neu erstellt."
+        "confirm_reapply_body": "Dadurch wird das konfigurierte Modell neu geladen und die gespeicherten Speichervektoren werden gelöscht und neu erstellt.",
+        "badge_catalog": "empfohlen",
+        "tab_catalog": "Von Hugging Face",
+        "tab_local": "Lokale Datei",
+        "source_label": "Modellquelle",
+        "catalog_hint": "Wird von Hugging Face in das Datenverzeichnis geladen und gegen einen festgelegten SHA-256 geprüft.",
+        "model_select_label": "Modell",
+        "catalog_meta": "{{mb}} MB · {{dim}}d",
+        "download": "Herunterladen",
+        "downloading": "Wird heruntergeladen … {{pct}} %",
+        "download_verifying": "Download wird geprüft …",
+        "download_failed": "Download fehlgeschlagen. Prüfe deine Netzwerkverbindung und versuche es erneut.",
+        "in_use": "In Verwendung",
+        "err_download_in_progress": "Ein anderes Modell wird gerade heruntergeladen. Warte, bis es fertig ist.",
+        "err_not_downloaded": "Lade das Modell herunter, bevor du es anwendest."
       },
       "kiroCrewCfgTab": {
         "agent_for_pool_processes_empty_uses_default_agent": "Als welches Crewmitglied die wartenden Agenten starten. Leer nutzt das Standard-Crewmitglied.",

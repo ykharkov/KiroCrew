@@ -529,7 +529,7 @@ async def test_apply_rebuilds_inherited_vectors_only_after_config_succeeds(
     calls = []
     candidates = []
 
-    def candidate(path):
+    def candidate(path, label=""):
         result = emb.LlamaCppEmbedder(
             model_path=path, dim=2, model_id=emb._custom_model_id(path, ""), serving=False
         )
@@ -635,7 +635,7 @@ async def test_apply_captures_inheritance_at_config_commit(migration, monkeypatc
         assert [vectors(store) for store in stores] == before
         migrated.append(True)
 
-    def candidate(path):
+    def candidate(path, label=""):
         backend = emb.LlamaCppEmbedder(
             model_path=path, dim=2, model_id=emb._custom_model_id(path, ""), serving=False
         )

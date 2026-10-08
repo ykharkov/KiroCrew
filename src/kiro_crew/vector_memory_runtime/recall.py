@@ -135,7 +135,7 @@ def recall(
         generation = store._space_generation
         signature = store.recorded_embedding_space()
     vector = (
-        store._try_embed(query_text, PRIORITY_INTERACTIVE)
+        store._try_embed(query_text, PRIORITY_INTERACTIVE, query=True)
         if query_text.strip() and cap > 0 and store.embed_fn
         else None
     )

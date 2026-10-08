@@ -75,7 +75,7 @@ def rebuild_home(tmp_path, monkeypatch):
     with model.open("r+b") as stream:
         stream.write(b"weights B")
 
-    def candidate(path):
+    def candidate(path, label=""):
         backend = emb.LlamaCppEmbedder(
             model_path=path, dim=2, model_id=emb._custom_model_id(path, ""), serving=False
         )

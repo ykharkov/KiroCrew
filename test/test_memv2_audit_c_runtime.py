@@ -477,13 +477,13 @@ async def test_store_opened_after_apply_snapshot_before_config_gets_new_width(
     write_config = memory._write_embed_model_config
     opened = []
 
-    async def open_before_write(path, dim):
+    async def open_before_write(path, dim, label=""):
         assert loader.KiroCrewConfig.load().memory.embedding_dim == 2
         assert not candidate._serving
         late = await context.ContextBuilder.ensure_store("member-late")
         opened.append(late)
         assert late._embedding_dim == 2
-        return await write_config(path, dim)
+        return await write_config(path, dim, label)
 
     monkeypatch.setattr(memory, "_write_embed_model_config", open_before_write)
     try:

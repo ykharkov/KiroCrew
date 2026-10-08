@@ -118,7 +118,8 @@ def vector_leg(embedder) -> tuple[Any, str | None]:
             prefetch()
         except Exception:  # noqa: BLE001 -- the embed below reports any real failure
             logger.debug("vector leg: model prefetch failed", exc_info=True)
-    return embedder.embed, embedder_signature(embedder)
+    # A query takes the model's query prompt; stored chunks keep the document one.
+    return getattr(embedder, "embed_query", embedder.embed), embedder_signature(embedder)
 
 
 class HybridRetriever:

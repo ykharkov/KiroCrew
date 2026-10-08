@@ -742,7 +742,7 @@ def get_episodic_context(
     relevant-but-old memory is admitted rather than ordered out by recency.
     """
     if query_embedding is None and query_text and store.embed_fn is not None:
-        query_embedding = store._try_embed(query_text, PRIORITY_INTERACTIVE)
+        query_embedding = store._try_embed(query_text, PRIORITY_INTERACTIVE, query=True)
     results = store.search_episodic(
         query_embedding=query_embedding,
         query_text=query_text,

@@ -2643,6 +2643,30 @@ keeps last-token. Vectors from before identities were stamped
 recorded and inherited only while the model still runs it; any other model
 rebuilds them.
 
+**First-class models.** `src/kiro_crew/data/embedding_models.json` lists the
+first-class models (`embedding_catalog`), each pinned to one Hugging Face file by
+repo, commit, sha256 and size, with the pooling, query/document prompts and BOS
+handling its retrieval quality was measured with on the vendored runtime.
+It ships EmbeddingGemma-300M and Nemotron-3-Embed-1B Q8_0; a model is added by
+adding an entry, with no code or UI change. A model's profile is a pure function
+of its id (`embedding_profile`): an entry's profile applies only when the
+identity is exactly `<entry id>:sha256:<pinned digest>`, and every other id runs
+with the pooling its label names, no prompts and the vocabulary's BOS. So the
+same bytes applied as a local file get the local-file profile, changing an
+entry's pooling, prompts or BOS handling needs a new entry id, and an entry id
+may not be one of the labels the loader writes (`custom`, `custom@mean`,
+`custom@cls`). Legacy vectors were made with that default profile, so a
+first-class model never inherits them. A profile's prompts are
+prepended at the shared seams only: a search embed passes `query=True`
+(`VectorMemoryStore._try_embed`, `InProcessEmbedder.embed_query`) and every
+stored text takes the document prompt. The Memory tab's **From Hugging Face**
+tab picks a model from a dropdown. Its download goes into the models directory
+beside the bundled model, resumably and one at a time, and the file is installed
+only after its sha256 matches; the transfer may follow Hugging Face's redirect
+to its CDN and no other host (`asset_downloader`'s `redirect_domains`). Apply
+hashes the file again and removes it when the digest no longer matches the pin,
+so the tab offers the download again.
+
 The embedding-status response reports `server_healthy=false` while a configured
 custom model is unverified or has a validation error, even if its file exists or
 an older backend is loaded. Successful verification restores normal health
@@ -2881,7 +2905,7 @@ alignment requires readiness.
 - The persisted `memory.embedding_dim` is the width of the **live** backend (`get_shared_embedder().dim`), never a literal — a width that cannot be read, or is not positive, is a 500 `embedding_dim_unreadable` that persists nothing, because `_load_model` refuses a model whose `n_embd` disagrees with the stored width and a wrong value leaves that model unloadable on every later restart
 - `can_retry` flag in status response for frontend retry button
 - `GET /api/memory/embedding-status` — `enabled` is always `true`; `provider` reports the legacy `"ollama"` token for older frontend compatibility; `setup_step` maps the manager's steps to the legacy vocabulary the shipped polling loop terminates on (`ready`→`done`, `failed`→`error`, `downloading`/`verifying`/`waiting_retry`→`downloading`); the raw step and attempt are additionally exposed as `download_step` + `download_attempt` (with `bytes_downloaded` / `bytes_total`) for newer frontends; `server_healthy` requires a present or loaded model and no custom-model validation error; `setup_warning` exposes inherited legacy-vector identity until explicit model apply, else the last setup's warning (such as a failed faiss install); `model_id` + `model_dim` disclose the embedding model producing vectors (read live from the shared embedder — e.g. `qwen3-embedding:0.6b` / `1024`) so the Memory tab can show which model runs locally
-- `POST /api/memory/embedding-model` — owner-only (checked first); changes the local embedding model at runtime. Two modes, and note which one is the default: `{"path": "...", "validate_only": true}` validates only (returns `size_bytes` without touching the live backend), while **omitting `validate_only` performs the swap** — there is no `apply` flag, so a caller that sends only `path` applies the model. An empty `path` reverts to the bundled model. Refuses with 403 on a restricted session (SEL-audited), 409 while a re-embed is already running (single-flight), and 409 `env_override_active` when `KIROCREW_EMBED_MODEL_PATH` is set, because the env var wins at load and persisting a config path under it would store a path/dim pair the process never uses
+- `POST /api/memory/embedding-model` — owner-only (checked first); changes the local embedding model at runtime. Two modes, and note which one is the default: `{"path": "...", "validate_only": true}` validates only (returns `size_bytes` without touching the live backend), while **omitting `validate_only` performs the swap** — there is no `apply` flag, so a caller that sends only `path` applies the model. An empty `path` reverts to the bundled model. `{"catalog_id": "<id>"}` applies a downloaded first-class model instead (400 `catalog_model_unknown`, 409 `catalog_model_not_downloaded`), and `{"catalog_id": "<id>", "download": true}` starts its download (409 `catalog_download_in_progress` while another runs); the status response carries `catalog`, `catalog_download` and `bundled_model_id`. Refuses with 403 on a restricted session (SEL-audited), 409 while a re-embed is already running (single-flight), and 409 `env_override_active` when `KIROCREW_EMBED_MODEL_PATH` is set, because the env var wins at load and persisting a config path under it would store a path/dim pair the process never uses
 - **Apply ordering**: build the gated candidate, install it while retiring the outgoing model, advance the store generation, wait for readiness (600s bound), persist the verified model configuration, retarget and reconcile stores, verify every recorded signature, activate, then backfill. Configuration-write failure preserves stored vectors. Alignment failure conditionally restores the prior model settings before resetting the candidate and restoring widths; rollback failure leaves the candidate gated with an actionable error. Unrelated configuration fields are not rolled back.
 - `GET /api/memory/embedding-status` additionally returns a `reembed` snapshot (`step`: `idle`/`applying`/`running`/`done`/`failed`, plus `done`/`total`/`error`) so the dashboard can render background re-embed progress; the card polls only while that step is busy
 - `POST /api/memory/disable-embeddings` — **gone**: embeddings are always-on. Kept as a graceful HTTP 410 compatibility stub (not a 404) for older clients; the current frontend does not call it

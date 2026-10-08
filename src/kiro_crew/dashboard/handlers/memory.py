@@ -956,7 +956,11 @@ async def api_memory_episodic_search(request: web.Request) -> web.Response:
     tag_filter = [t.strip() for t in request.query.get("tags", "").split(",") if t.strip()] or None
     # _try_embed runs blocking in-process model inference (and a ~1s model
     # load on first call); offload to keep the dashboard event loop responsive.
-    emb = await asyncio.to_thread(store._try_embed, query) if store.embed_fn and query else None
+    emb = (
+        await asyncio.to_thread(store._try_embed, query, query=True)
+        if store.embed_fn and query
+        else None
+    )
     results = []
     # Offload: search_episodic serializes on _db_lock — see
     # api_memory_semantic.
@@ -1489,7 +1493,15 @@ if TYPE_CHECKING:  # names it serves from outside the family, from their homes
     from kiro_crew.dashboard.handlers._shared import (  # noqa: F401
         memory_startup_refusal,
     )
+    from kiro_crew.embedding_catalog import (  # noqa: F401
+        catalog_download_status,
+        catalog_model,
+        catalog_model_downloaded,
+        embedding_model_catalog,
+        start_catalog_download,
+    )
     from kiro_crew.embeddings import (  # noqa: F401
+        _MODEL_ID,
         DOWNLOAD_ATTEMPTS_INTERACTIVE,
         LEGACY_EMBEDDING_WARNING,
         ReembedProgress,

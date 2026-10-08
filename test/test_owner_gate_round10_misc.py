@@ -136,7 +136,7 @@ def _embedding_app(
     applied: list = []
     done = threading.Event()
 
-    def _fake_apply(store: Any, raw: str, loop: Any) -> None:
+    def _fake_apply(store: Any, raw: str, loop: Any, **_identity: Any) -> None:
         applied.append((store, raw))
         done.set()
 

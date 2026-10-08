@@ -1382,9 +1382,11 @@ class VectorMemoryStore:
                 rollback_owned()
                 raise
 
-    def _try_embed(self, text: str, priority: int = PRIORITY_NORMAL) -> list[float] | None:
-        """Embed text using embed_fn if available."""
-        return _embedding.try_embed(self, text, priority)
+    def _try_embed(
+        self, text: str, priority: int = PRIORITY_NORMAL, *, query: bool = False
+    ) -> list[float] | None:
+        """Embed text using embed_fn if available; *query* marks a search text."""
+        return _embedding.try_embed(self, text, priority, query=query)
 
     def recorded_rebuild_generation(self) -> str:
         """Explicit rebuild request whose old vectors were durably invalidated."""

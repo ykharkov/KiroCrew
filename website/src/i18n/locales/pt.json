@@ -14561,7 +14561,21 @@
         "will_revert": "Vazio — voltará ao modelo incluído.",
         "err_env_override_with_ref": "<settingRef/> está definida e substitui esta configuração. Remova-a para alterar o modelo aqui.",
         "apply_reapply": "Reconstruir vetores de memória",
-        "confirm_reapply_body": "Isso recarrega o modelo configurado e apaga e reconstrói os vetores de memória armazenados."
+        "confirm_reapply_body": "Isso recarrega o modelo configurado e apaga e reconstrói os vetores de memória armazenados.",
+        "badge_catalog": "recomendado",
+        "tab_catalog": "Do Hugging Face",
+        "tab_local": "Arquivo local",
+        "source_label": "Origem do modelo",
+        "catalog_hint": "Baixado do Hugging Face para o diretório de dados e verificado com um SHA-256 fixado.",
+        "model_select_label": "Modelo",
+        "catalog_meta": "{{mb}} MB · {{dim}}d",
+        "download": "Baixar",
+        "downloading": "Baixando… {{pct}}%",
+        "download_verifying": "Verificando o download…",
+        "download_failed": "O download falhou. Verifique sua conexão de rede e tente novamente.",
+        "in_use": "Em uso",
+        "err_download_in_progress": "Outro modelo está sendo baixado. Aguarde até terminar.",
+        "err_not_downloaded": "Baixe o modelo antes de aplicá-lo."
       },
       "kiroCrewCfgTab": {
         "agent_for_pool_processes_empty_uses_default_agent": "Como qual colega os agentes em espera iniciam. Vazio usa o colega padrão.",
